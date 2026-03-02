@@ -492,7 +492,7 @@ function Add-Config {
         [Parameter(Mandatory = $True, Position = 0)]
         [String] $Name,
         [Parameter(Mandatory = $True, Position = 1)]
-        [String] $Value
+        [Object] $Value
     )
 
     $scoopConfig = Use-Config
@@ -521,45 +521,53 @@ function Add-Config {
     }
 
     ConvertTo-Json $scoopConfig | Set-Content $SCOOP_CONFIG_FILE -Encoding ASCII
-    return $scoopConfig
+    # return $scoopConfig
 }
 
 function Add-DefaultConfig {
     # If user-level SCOOP env not defined, save to root_path
-    if (!(Get-Env 'SCOOP')) {
-        if ($SCOOP_DIR -ne "$env:USERPROFILE\scoop") {
-            Write-Verbose "Adding config root_path: $SCOOP_DIR"
-            Add-Config -Name 'root_path' -Value $SCOOP_DIR | Out-Null
-        }
-    }
+    Add-Config -Name 'root_path' -Value $SCOOP_DIR
 
     # Use system SCOOP_GLOBAL, or set system SCOOP_GLOBAL
     # with $env:SCOOP_GLOBAL if RunAsAdmin, otherwise save to global_path
-    if (!(Get-Env 'SCOOP_GLOBAL' -global)) {
-        if ((Test-IsAdministrator) -and $env:SCOOP_GLOBAL) {
-            Write-Verbose "Setting System Environment Variable SCOOP_GLOBAL: $env:SCOOP_GLOBAL"
-            [Environment]::SetEnvironmentVariable('SCOOP_GLOBAL', $env:SCOOP_GLOBAL, 'Machine')
-        } else {
-            if ($SCOOP_GLOBAL_DIR -ne "$env:ProgramData\scoop") {
-                Write-Verbose "Adding config global_path: $SCOOP_GLOBAL_DIR"
-                Add-Config -Name 'global_path' -Value $SCOOP_GLOBAL_DIR | Out-Null
-            }
-        }
-    }
+    Add-Config -Name 'global_path' -Value $SCOOP_GLOBAL_DIR
 
     # Use system SCOOP_CACHE, or set system SCOOP_CACHE
     # with $env:SCOOP_CACHE if RunAsAdmin, otherwise save to cache_path
-    if (!(Get-Env 'SCOOP_CACHE' -global)) {
-        if ((Test-IsAdministrator) -and $env:SCOOP_CACHE) {
-            Write-Verbose "Setting System Environment Variable SCOOP_CACHE: $env:SCOOP_CACHE"
-            [Environment]::SetEnvironmentVariable('SCOOP_CACHE', $env:SCOOP_CACHE, 'Machine')
-        } else {
-            if ($SCOOP_CACHE_DIR -ne "$SCOOP_DIR\cache") {
-                Write-Verbose "Adding config cache_path: $SCOOP_CACHE_DIR"
-                Add-Config -Name 'cache_path' -Value $SCOOP_CACHE_DIR | Out-Null
-            }
-        }
-    }
+    Add-Config -Name 'cache_path' -Value $SCOOP_CACHE_DIR
+
+    # Use SQLite database for caching.
+    # This is useful for speeding up 'scoop search' and 'scoop shim' commands.
+    Add-Config -Name 'use_sqlite_cache' -Value $true
+
+    # When set to $true, Scoop will use `SCOOP_PATH` environment variable to store apps' `PATH`s.
+    # When set to arbitrary non-empty string, Scoop will use that string as the environment variable name instead.
+    # This is useful when you want to isolate Scoop from the system `PATH`.
+    Add-Config -Name 'use_isolated_path' -Value $true
+
+    # Aria2c will be used for downloading of artifacts.
+    Add-Config -Name 'aria2-enabled' -Value $true
+
+    # Disable Aria2c warning which is shown while downloading.
+    Add-Config -Name 'aria2-warning-enabled' -Value $false
+
+    # Disable automatic fallback to the default downloader when Aria2c download fails.
+    Add-Config -Name 'aria2-fallback-disabled' -Value $false
+
+    # Number of seconds to wait between retries.
+    Add-Config -Name 'aria2-retry-wait' -Value 8
+
+    # Number of connections used for downlaod.
+    Add-Config -Name 'aria2-split' -Value 8
+
+    # The maximum number of connections to one server for each download.
+    Add-Config -Name 'aria2-max-connection-per-server' -Value 8
+
+    # Downloaded files will be splitted by this configured size and downloaded using multiple connections.
+    Add-Config -Name 'aria2-min-split-size' -Value '1M'
+
+    Add-Config -Name 'scoop_repo' -Value $SCOOP_PACKAGE_GIT_REPO
+    Add-Config -Name 'scoop_branch' -Value 'develop'
 
     # save current datetime to last_update
     Add-Config -Name 'last_update' -Value ([System.DateTime]::Now.ToString('o')) | Out-Null
@@ -687,26 +695,26 @@ $IS_EXECUTED_FROM_IEX = ($null -eq $MyInvocation.MyCommand.Path)
 Test-LanguageMode
 
 # Scoop root directory
-$SCOOP_DIR = $ScoopDir, $env:SCOOP, "$env:USERPROFILE\scoop" | Where-Object { -not [String]::IsNullOrEmpty($_) } | Select-Object -First 1
+$SCOOP_DIR = "d:/scoop"
 # Scoop global apps directory
-$SCOOP_GLOBAL_DIR = $ScoopGlobalDir, $env:SCOOP_GLOBAL, "$env:ProgramData\scoop" | Where-Object { -not [String]::IsNullOrEmpty($_) } | Select-Object -First 1
+$SCOOP_GLOBAL_DIR = "$SCOOP_DIR/global"
 # Scoop cache directory
-$SCOOP_CACHE_DIR = $ScoopCacheDir, $env:SCOOP_CACHE, "$SCOOP_DIR\cache" | Where-Object { -not [String]::IsNullOrEmpty($_) } | Select-Object -First 1
+$SCOOP_CACHE_DIR = "$SCOOP_DIR/cache"
 # Scoop shims directory
-$SCOOP_SHIMS_DIR = "$SCOOP_DIR\shims"
+$SCOOP_SHIMS_DIR = "$SCOOP_DIR/shims"
 # Scoop itself directory
-$SCOOP_APP_DIR = "$SCOOP_DIR\apps\scoop\current"
+$SCOOP_APP_DIR = "$SCOOP_DIR/apps/scoop/current"
 # Scoop main bucket directory
-$SCOOP_MAIN_BUCKET_DIR = "$SCOOP_DIR\buckets\main"
+$SCOOP_MAIN_BUCKET_DIR = "$SCOOP_DIR/buckets/main"
 # Scoop config file location
 $SCOOP_CONFIG_HOME = $env:XDG_CONFIG_HOME, "$env:USERPROFILE\.config" | Select-Object -First 1
 $SCOOP_CONFIG_FILE = "$SCOOP_CONFIG_HOME\scoop\config.json"
 
 # TODO: Use a specific version of Scoop and the main bucket
-$SCOOP_PACKAGE_REPO = 'https://github.com/ScoopInstaller/Scoop/archive/master.zip'
+$SCOOP_PACKAGE_REPO = 'https://github.com/anacude/Scoop/archive/develop.zip'
 $SCOOP_MAIN_BUCKET_REPO = 'https://github.com/ScoopInstaller/Main/archive/master.zip'
 
-$SCOOP_PACKAGE_GIT_REPO = 'https://github.com/ScoopInstaller/Scoop.git'
+$SCOOP_PACKAGE_GIT_REPO = 'https://github.com/anacude/Scoop.git'
 $SCOOP_MAIN_BUCKET_GIT_REPO = 'https://github.com/ScoopInstaller/Main.git'
 
 # Quit if anything goes wrong
